@@ -6,9 +6,8 @@ end
 
 module type S = 
 sig
-    type key  (* key <- int gdy chce stworzyć moduł permutacji liczb całkowitych *)
-    type t    (* t   <- para map (funkcji) ALE TO MA BYĆ TYP 
-                        pusta permutacja albo *)
+    type key 
+    type t    
 
     
     (** permutacja jako funkcja *)
