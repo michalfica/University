@@ -65,22 +65,67 @@ let pp_print_theorem fmtr thm =
 
 (* --------------------------------------------------------------- *)
 (* ---------------------- sprawdzenie czy zmienna jest wolna ------*)
+(** compute or map on list of bool *)
 let rec list_to_bool xs =
   match xs with 
   | []    -> false 
   | x::xs -> x || list_to_bool xs   
+
+(** checks if `var` appears in term `t` *)
 let rec free_in_term var t = 
   match t with 
-  | Var x       -> if var==x then true else false  
+  | Var x       -> if var=x then true else false  
   | Sym (f, xs) -> list_to_bool (List.map (fun x -> (free_in_term var x)) xs) 
 
+(** checks if `var` appears in `f` and is not quantified in `f` *)
 let rec free_in_formula var f = 
   match f with 
   | For_all (Var x, f) ->
-    if var==x then false else free_in_formula var f 
-  | _              -> true 
+    (* let _ = print_string x in  *)
+    if var=x then false else free_in_formula var f 
+  | Variable x              -> var=x  
+  | Implication(f1, f2)     -> free_in_formula var f1 || free_in_formula var f2 
+  | R_application(r, n, xs) -> list_to_bool (List.map (fun t -> (free_in_term var t)) xs)
+  | _              -> false  
 (* --------------------------------------------------------------- *)
+(* ------------------------------------PODSTAWIANIE--------------- *)
+(** returns first var which not appears in `f` nor in `t` or appers but quantified *)
+let next_var_name f t = 
+  let rec aux f t var =
+    let v = "x" ^ string_of_int var in 
+    let _ = print_string ("sprawdzam " ^ v ^ "\n") in
+    if (free_in_formula v f) || (free_in_term v t)
+      then aux f t (var + 1) 
+      else v
+  in aux f t 0 
 
+(** substitute term `s` for each FREE occurence of `x` in `t` *)
+let rec subst_in_term x s t = 
+
+  match t with 
+  | Var a      -> if a=x then s else Var a 
+  | Sym(f, xs) -> Sym(f, List.map (subst_in_term x s) xs) 
+
+(** substitute term `s` for each FREE occurence of `x` in `t` 
+    not sure about result on Variable a *)
+let rec subst_in_formula x s f = 
+  match f with 
+  | False                   -> False 
+  | Variable a              -> Variable a (*if a=x then s else Variable a*) 
+  | Implication(f1, f2)     -> Implication(subst_in_formula x s f1, subst_in_formula x s f2)
+  | R_application(r, n, xs) -> R_application(r, n, List.map (subst_in_term x s) xs)
+  | For_all(Var a, f)       -> 
+    if a=x then For_all(Var a, f) (* nie ma żadnych wolnych wystapien x *)
+    else 
+      if not (free_in_term a s) 
+      then For_all(Var a, subst_in_formula x s f)
+      else let z = next_var_name f s in 
+        let formula_bez_a = (subst_in_formula a (Var z) f) in
+        let formula_bez_x = (subst_in_formula x s formula_bez_a) in 
+        For_all(Var z, formula_bez_x)
+  | _ -> failwith "Invalid formula" (** should never happen *)
+(* --------------------------------------------------------------- *)
+(* ----------------------------------- RÓWNOŚĆ FORMUŁ ------------ *)
 let by_assumption f = Theorem([f], f)
 
 let imp_i f thm =
