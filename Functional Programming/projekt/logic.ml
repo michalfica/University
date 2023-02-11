@@ -66,16 +66,16 @@ let pp_print_theorem fmtr thm =
 (* --------------------------------------------------------------- *)
 (* ---------------------- sprawdzenie czy zmienna jest wolna ------*)
 (** compute or map on list of bool *)
-let rec list_to_bool xs =
+let rec or_map xs =
   match xs with 
   | []    -> false 
-  | x::xs -> x || list_to_bool xs   
+  | x::xs -> x || or_map xs   
 
 (** checks if `var` appears in term `t` *)
 let rec free_in_term var t = 
   match t with 
   | Var x       -> if var=x then true else false  
-  | Sym (f, xs) -> list_to_bool (List.map (fun x -> (free_in_term var x)) xs) 
+  | Sym (f, xs) -> or_map (List.map (fun x -> (free_in_term var x)) xs) 
 
 (** checks if `var` appears in `f` and is not quantified in `f` *)
 let rec free_in_formula var f = 
@@ -85,7 +85,7 @@ let rec free_in_formula var f =
     if var=x then false else free_in_formula var f 
   | Variable x              -> var=x  
   | Implication(f1, f2)     -> free_in_formula var f1 || free_in_formula var f2 
-  | R_application(r, n, xs) -> list_to_bool (List.map (fun t -> (free_in_term var t)) xs)
+  | R_application(r, n, xs) -> or_map (List.map (fun t -> (free_in_term var t)) xs)
   | _              -> false  
 (* --------------------------------------------------------------- *)
 (* ------------------------------------PODSTAWIANIE--------------- *)
@@ -184,7 +184,24 @@ let imp_e th1 th2 =
 let bot_e f thm =
   match thm with
   | Theorem(a,False) -> Theorem(a,f)
-  | _                -> failwith "invalid arguments"                    
+  | _                -> failwith "invalid arguments"    
+
+
+(** val for_all : theorem -> string -> theorem *)
+let for_all th x = 
+  match th with 
+  | Theorem(assumptions, consequence) -> 
+    let condition = or_map (List.map (free_in_formula x) assumptions) in 
+    if condition then failwith "invalid argments"
+    else Theorem(assumptions, For_all(Var x, consequence))
+
+(** val exist : theorem -> theorem *)
+let exist th t = 
+  match th with 
+  | Theorem(a, For_all(Var x, f)) -> 
+    let new_f = subst_in_formula x t f in 
+    Theorem(a, new_f)
+  | _ -> failwith "invalid arguments"
 
 let prosta_formula = Implication (Variable "p", Variable "q")
 let formula3przyklad = Implication( Implication(Variable "p", Implication(Variable "q", Variable "r")), 
