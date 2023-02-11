@@ -126,6 +126,42 @@ let rec subst_in_formula x s f =
   | _ -> failwith "Invalid formula" (** should never happen *)
 (* --------------------------------------------------------------- *)
 (* ----------------------------------- RÓWNOŚĆ FORMUŁ ------------ *)
+let rec and_map xs = 
+  match xs with 
+  | [] -> true 
+  | x::xs -> x && and_map xs 
+
+let rec eq_term t1 t2 = 
+  match t1, t2 with
+  | Var x, Var y -> x=y 
+  | Sym(f, xs), Sym(g, ys) -> f=g && List.length xs = List.length ys && (and_map (List.map2 (fun i j -> eq_term i j) xs ys))
+  | _, _ -> false 
+
+let next_var_name_f f1 f2 = 
+  let rec aux var =
+    let v = "x" ^ string_of_int var in 
+    if (free_in_formula v f1) || (free_in_formula v f2)
+      then aux (var + 1) 
+      else v
+  in aux 0 
+
+  let rec eq_formula f1 f2 = 
+  match f1, f2 with 
+  | False, False           -> true 
+  | Variable x, Variable y -> x=y 
+  | Implication(f1, f2), Implication(g1, g2) 
+                           -> eq_formula f1 g1 && eq_formula f2 g2
+  | R_application(r1, n, xs), R_application(r2, m, ys) 
+                           -> r1=r2 && n=m && and_map (List.map2 (fun i j -> eq_term i j) xs ys) 
+  | For_all(Var x, f1), For_all(Var y, f2) 
+                           -> let z = Var (next_var_name_f f1 f2)  in 
+                              let f1_bez_x = subst_in_formula x z f1 in 
+                              let f2_bez_y = subst_in_formula y z f2 in 
+                              eq_formula f1_bez_x f2_bez_y 
+  | _, _ -> false
+(* --------------------------------------------------------------- *)
+(* -------------------------------- REGUŁY DOWODZENIA ------------ *)
+
 let by_assumption f = Theorem([f], f)
 
 let imp_i f thm =
