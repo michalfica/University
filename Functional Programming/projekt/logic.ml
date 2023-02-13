@@ -100,30 +100,58 @@ let next_var_name f t =
   in aux f t 0 
 
 (** substitute term `s` for each FREE occurence of `x` in `t` *)
-let rec subst_in_term x s t = 
+let rec subst_in_term_slow x s t = 
 
   match t with 
   | Var a      -> if a=x then s else Var a 
-  | Sym(f, xs) -> Sym(f, List.map (subst_in_term x s) xs) 
+  | Sym(f, xs) -> Sym(f, List.map (subst_in_term_slow x s) xs) 
 
 (** substitute term `s` for each FREE occurence of `x` in `t` 
     not sure about result on Variable a *)
-let rec subst_in_formula x s f = 
+let rec subst_in_formula_slow x s f = 
   match f with 
   | False                   -> False 
   | Variable a              -> Variable a (*if a=x then s else Variable a*) 
-  | Implication(f1, f2)     -> Implication(subst_in_formula x s f1, subst_in_formula x s f2)
-  | R_application(r, n, xs) -> R_application(r, n, List.map (subst_in_term x s) xs)
+  | Implication(f1, f2)     -> Implication(subst_in_formula_slow x s f1, subst_in_formula_slow x s f2)
+  | R_application(r, n, xs) -> R_application(r, n, List.map (subst_in_term_slow x s) xs)
   | For_all(Var a, f)       -> 
     if a=x then For_all(Var a, f) (* nie ma żadnych wolnych wystapien x *)
     else 
       if not (free_in_term a s) 
-      then For_all(Var a, subst_in_formula x s f)
+      then For_all(Var a, subst_in_formula_slow x s f)
       else let z = next_var_name f s in 
-        let formula_bez_a = (subst_in_formula a (Var z) f) in
-        let formula_bez_x = (subst_in_formula x s formula_bez_a) in 
+        let formula_bez_a = (subst_in_formula_slow a (Var z) f) in
+        let formula_bez_x = (subst_in_formula_slow x s formula_bez_a) in 
         For_all(Var z, formula_bez_x)
   | _ -> failwith "Invalid formula" (** should never happen *)
+(* --------------------------------------------------------------- *)
+(* ------------------PODSTAWIANIE_ZA_WSZYSTKO_NARAZ--------------- *)
+module VarMap = Map.Make(String)
+let counter = ref 0
+let fresh_var () = counter := (!counter) + 1; "x" ^ string_of_int !counter
+
+let rec psubst_in_term map t =
+  match t with 
+  | Var a -> let z = try VarMap.find a map with Not_found -> Var a in 
+    z
+  | Sym(f, xs) -> Sym(f, List.map (psubst_in_term map) xs)
+let subst_in_term x s t = psubst_in_term (VarMap.singleton x s) t 
+
+let rec psubst_in_formula map f = 
+  match f with 
+  | False                   -> False 
+  | Variable a              -> Variable a (*if a=x then s else Variable a*) 
+  | Implication(f1, f2)     -> Implication(psubst_in_formula map f1, psubst_in_formula map f2)
+  | R_application(r, n, xs) -> R_application(r, n, List.map (psubst_in_term map) xs)
+  | For_all(Var a, f)       -> 
+    let check = VarMap.exists (fun key value -> key=a) map in 
+    if check then For_all(Var a, psubst_in_formula (VarMap.remove a map) f) (* nie ma żadnych wolnych wystapien x *)
+             else let check = VarMap.exists (fun key value -> free_in_term a value) map in 
+                  if check then let new_var = Var (fresh_var ()) in For_all(new_var, psubst_in_formula (VarMap.add a new_var map) f)
+                  else For_all(Var a, psubst_in_formula map f)
+  | _ -> failwith "Invalid formula" (** should never happen *)
+
+let subst_in_formula x s f = psubst_in_formula (VarMap.singleton x s) f 
 (* --------------------------------------------------------------- *)
 (* ----------------------------------- RÓWNOŚĆ FORMUŁ ------------ *)
 let rec and_map xs = 
